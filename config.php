@@ -1,11 +1,9 @@
 <?php
-// config.php
 
-// Datos de conexión
-define('DB_HOST', 'localhost');   // Servidor (XAMPP/WAMP/Laragon)
-define('DB_USER', 'root');        // Usuario por defecto
-define('DB_PASS', '');            // Contraseña (vacía en local)
-define('DB_NAME', 'escuela');     // Nombre de tu base de datos
+define('DB_HOST', 'localhost');   
+define('DB_USER', 'root');        
+define('DB_PASS', '');            
+define('DB_NAME', 'escuela');     
 
 /**
  * Obtiene la conexión a la base de datos
@@ -18,7 +16,7 @@ function getConnection() {
         die('Error de conexión: ' . $conn->connect_error);
     }
 
-    // Charset recomendado
+    
     $conn->set_charset('utf8mb4');
 
     return $conn;
