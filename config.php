@@ -27,6 +27,15 @@ function initDatabase() {
     
     $conn->select_db(DB_NAME);
     
+    // Crear tabla de carreras
+    $sql = "CREATE TABLE IF NOT EXISTS carreras (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nombre VARCHAR(100) NOT NULL UNIQUE,
+        activa TINYINT(1) DEFAULT 1,
+        fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )";
+    $conn->query($sql);
+    
     // Crear tabla de grupos
     $sql = "CREATE TABLE IF NOT EXISTS grupos (
         id INT AUTO_INCREMENT PRIMARY KEY,
