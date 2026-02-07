@@ -583,7 +583,7 @@ $conn->close();
     <main class="main-content">
         <!-- Banner de Bienvenida -->
         <section class="welcome-banner">
-            <h2>¡Bienvenido al Sistema de Gestión Escolar!</h2>
+            <h2>Bienvenido al Sistema de Gestión Escolar</h2>
             <p>Administra eficientemente carreras, grupos y alumnos desde un solo lugar</p>
             
             <div class="quick-actions">
