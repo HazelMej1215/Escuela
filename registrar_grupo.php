@@ -259,7 +259,7 @@ $conn->close();
                     <option value="">Seleccione un turno</option>
                     <option value="Vespertino">Vespertino</option>
                     <option value="Matutino">Matutino</option>
-                    <option value="Nocturno">Nocturno</option>
+                    <option value="Nocturno">Mixto</option>
                 </select>
             </div>
             
