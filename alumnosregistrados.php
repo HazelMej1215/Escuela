@@ -266,6 +266,7 @@ $conn->close();
         <h1>📋 Alumnos Registrados</h1>
         
         <div class="navegacion">
+            <a href="configurar_catalogos.php" class="nav-link">Catálogo Carreras</a>
             <a href="registrar_grupo.php" class="nav-link">Registrar Grupo</a>
             <a href="registrar_alumno.php" class="nav-link">Registrar Alumno</a>
             <a href="alumnos_registrados.php" class="nav-link active">Ver Alumnos</a>
