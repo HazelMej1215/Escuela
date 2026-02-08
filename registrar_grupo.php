@@ -4,313 +4,281 @@ require_once 'config.php';
 $mensaje = '';
 $tipo_mensaje = '';
 
-// Procesar el formulario cuando se envía
+$conn = getConnection();
+
+// Cargar catálogos activos
+$carreras = $conn->query("SELECT id_carrera, nombre, codigo FROM carrera WHERE activo = 1 ORDER BY nombre");
+$turnos   = $conn->query("SELECT id_turno, nombre, sigla FROM turno WHERE activo = 1 ORDER BY nombre");
+$grados   = $conn->query("SELECT id_grado, numero FROM grado WHERE activo = 1 ORDER BY numero");
+
+// Procesar alta de grupo
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $carrera = trim($_POST['carrera']);
-    $turno = trim($_POST['turno']);
-    $grado = trim($_POST['grado']);
-    $grupo = trim($_POST['grupo']);
-    
-    if (!empty($carrera) && !empty($turno) && !empty($grado) && !empty($grupo)) {
-        $conn = getConnection();
-        
-        // Verificar si el grupo ya existe
-        $stmt = $conn->prepare("SELECT id FROM grupos WHERE grupo = ?");
-        $stmt->bind_param("s", $grupo);
+    $id_carrera   = intval($_POST['id_carrera'] ?? 0);
+    $id_turno     = intval($_POST['id_turno'] ?? 0);
+    $id_grado     = intval($_POST['id_grado'] ?? 0);
+    $numero_grupo = intval($_POST['numero_grupo'] ?? 0);
+
+    if ($id_carrera && $id_turno && $id_grado && $numero_grupo) {
+
+        // Obtener datos
+        $stmt = $conn->prepare("SELECT codigo FROM carrera WHERE id_carrera=? AND activo=1");
+        $stmt->bind_param("i", $id_carrera);
         $stmt->execute();
-        $resultado = $stmt->get_result();
-        
-        if ($resultado->num_rows > 0) {
-            $mensaje = "¡Error! El grupo '$grupo' ya existe. Por favor use otro nombre (ej. ISC802, ISC803, etc.)";
-            $tipo_mensaje = 'error';
+        $codigoCarrera = $stmt->get_result()->fetch_assoc()['codigo'] ?? null;
+        $stmt->close();
+
+        $stmt = $conn->prepare("SELECT sigla FROM turno WHERE id_turno=? AND activo=1");
+        $stmt->bind_param("i", $id_turno);
+        $stmt->execute();
+        $siglaTurno = $stmt->get_result()->fetch_assoc()['sigla'] ?? null;
+        $stmt->close();
+
+        $stmt = $conn->prepare("SELECT numero FROM grado WHERE id_grado=? AND activo=1");
+        $stmt->bind_param("i", $id_grado);
+        $stmt->execute();
+        $numeroGrado = $stmt->get_result()->fetch_assoc()['numero'] ?? null;
+        $stmt->close();
+
+        if (!$codigoCarrera || !$siglaTurno || !$numeroGrado) {
+            $mensaje = "Catálogos inválidos o inactivos.";
+            $tipo_mensaje = "error";
         } else {
-            // Insertar el nuevo grupo
-            $stmt = $conn->prepare("INSERT INTO grupos (carrera, turno, grado, grupo) VALUES (?, ?, ?, ?)");
-            $stmt->bind_param("ssss", $carrera, $turno, $grado, $grupo);
-            
-            if ($stmt->execute()) {
-                $mensaje = "¡Grupo '$grupo' registrado exitosamente!";
-                $tipo_mensaje = 'exito';
+            $grupo2 = str_pad($numero_grupo, 2, "0", STR_PAD_LEFT);
+            $codigo_grupo = $codigoCarrera . $numeroGrado . $grupo2 . '-' . $siglaTurno;
+
+            $stmt = $conn->prepare(
+                "SELECT id_grupo FROM grupo 
+                 WHERE id_carrera=? AND id_turno=? AND id_grado=? AND numero_grupo=?"
+            );
+            $stmt->bind_param("iiii", $id_carrera, $id_turno, $id_grado, $numero_grupo);
+            $stmt->execute();
+            $existe = $stmt->get_result()->num_rows > 0;
+            $stmt->close();
+
+            if ($existe) {
+                $mensaje = "El grupo {$codigo_grupo} ya existe.";
+                $tipo_mensaje = "error";
             } else {
-                $mensaje = "Error al registrar el grupo: " . $conn->error;
-                $tipo_mensaje = 'error';
+                $stmt = $conn->prepare(
+                    "INSERT INTO grupo (id_carrera,id_turno,id_grado,numero_grupo,codigo_grupo)
+                     VALUES (?,?,?,?,?)"
+                );
+                $stmt->bind_param(
+                    "iiiis",
+                    $id_carrera,
+                    $id_turno,
+                    $id_grado,
+                    $numero_grupo,
+                    $codigo_grupo
+                );
+
+                if ($stmt->execute()) {
+                    $mensaje = "Grupo {$codigo_grupo} registrado correctamente";
+                    $tipo_mensaje = "exito";
+                } else {
+                    $mensaje = "Error al registrar el grupo";
+                    $tipo_mensaje = "error";
+                }
+                $stmt->close();
             }
         }
-        
-        $stmt->close();
-        $conn->close();
     } else {
-        $mensaje = "Por favor complete todos los campos";
-        $tipo_mensaje = 'error';
+        $mensaje = "Completa todos los campos";
+        $tipo_mensaje = "error";
     }
 }
 
-// Obtener todos los grupos registrados
-$conn = getConnection();
-$grupos_registrados = $conn->query("SELECT * FROM grupos ORDER BY fecha_registro DESC");
+// Listado
+$grupos = $conn->query("
+    SELECT g.codigo_grupo, g.fecha_registro,
+           c.nombre carrera, t.nombre turno, gr.numero grado
+    FROM grupo g
+    INNER JOIN carrera c ON g.id_carrera=c.id_carrera
+    INNER JOIN turno t ON g.id_turno=t.id_turno
+    INNER JOIN grado gr ON g.id_grado=gr.id_grado
+    ORDER BY g.fecha_registro DESC
+");
+
 $conn->close();
 ?>
 
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Registrar Grupo</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            padding: 30px;
-        }
-        
-        h1 {
-            color: #333;
-            text-align: center;
-            margin-bottom: 10px;
-            font-size: 28px;
-        }
-        
-        .navegacion {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #f0f0f0;
-        }
-        
-        .nav-link {
-            padding: 10px 20px;
-            background: #667eea;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            transition: all 0.3s;
-            font-size: 14px;
-        }
-        
-        .nav-link:hover {
-            background: #764ba2;
-            transform: translateY(-2px);
-        }
-        
-        .nav-link.active {
-            background: #764ba2;
-        }
-        
-        .mensaje {
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-weight: 500;
-        }
-        
-        .mensaje.exito {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .mensaje.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .form-group {
-            margin-bottom: 20px;
-        }
-        
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #555;
-            font-weight: 600;
-            font-size: 14px;
-        }
-        
-        input, select {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 15px;
-            transition: border 0.3s;
-        }
-        
-        input:focus, select:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        
-        .btn {
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
-        }
-        
-        .grupos-lista {
-            margin-top: 30px;
-        }
-        
-        .grupos-lista h2 {
-            color: #333;
-            margin-bottom: 15px;
-            font-size: 20px;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #f0f0f0;
-        }
-        
-        th {
-            background: #667eea;
-            color: white;
-            font-weight: 600;
-            font-size: 14px;
-        }
-        
-        tr:hover {
-            background: #f8f9fa;
-        }
-        
-        .badge {
-            display: inline-block;
-            padding: 5px 12px;
-            background: #667eea;
-            color: white;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .empty-state {
-            text-align: center;
-            padding: 40px;
-            color: #999;
-        }
-    </style>
+<meta charset="UTF-8">
+<title>Registrar Grupo</title>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+
+body{
+    font-family:'Inter',sans-serif;
+    background:#0f0f1e;
+    min-height:100vh;
+    padding:25px;
+}
+body::before{
+    content:'';
+    position:fixed;inset:0;
+    background:
+        radial-gradient(circle at 20% 50%, rgba(120,119,198,.3), transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(99,102,241,.2), transparent 50%),
+        radial-gradient(circle at 40% 20%, rgba(168,85,247,.15), transparent 50%);
+}
+
+.wrap{max-width:1100px;margin:auto;position:relative;z-index:1}
+
+.header{
+    display:flex;justify-content:space-between;align-items:center;
+    margin-bottom:20px;flex-wrap:wrap;gap:15px;
+}
+.header h1{color:#fff;font-size:22px;font-weight:800}
+.btn{
+    padding:12px 18px;
+    border-radius:12px;
+    text-decoration:none;
+    font-weight:700;
+    color:#fff;
+    background:linear-gradient(135deg,#6366f1,#8b5cf6);
+    transition:.25s;
+}
+.btn:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(99,102,241,.35)}
+
+.card{
+    background:rgba(15,15,30,.55);
+    backdrop-filter:blur(20px);
+    border:1px solid rgba(255,255,255,.1);
+    border-radius:18px;
+    padding:25px;
+    box-shadow:0 20px 60px rgba(0,0,0,.35);
+}
+
+.mensaje{
+    padding:12px 14px;border-radius:12px;
+    margin-bottom:18px;font-weight:700;font-size:13px
+}
+.exito{background:rgba(34,197,94,.15);color:#bbf7d0}
+.error{background:rgba(239,68,68,.15);color:#fecaca}
+
+form{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    gap:16px;
+}
+label{color:#c7d2fe;font-size:13px;font-weight:700}
+select,input{
+    width:100%;padding:12px;border-radius:12px;
+    border:1px solid rgba(255,255,255,.15);
+    background:rgba(255,255,255,.06);color:#fff;
+}
+button{
+    grid-column:1/-1;
+    padding:14px;border:none;border-radius:14px;
+    font-weight:800;font-size:15px;
+    color:#fff;cursor:pointer;
+    background:linear-gradient(135deg,#6366f1,#8b5cf6);
+}
+button:hover{box-shadow:0 14px 30px rgba(99,102,241,.35)}
+
+table{
+    width:100%;margin-top:30px;border-collapse:collapse
+}
+th,td{padding:12px;border-bottom:1px solid rgba(255,255,255,.1)}
+th{color:#fff;font-size:13px}
+td{color:#c7d2fe;font-size:13px}
+.badge{
+    padding:6px 12px;border-radius:999px;
+    background:rgba(99,102,241,.2);
+    border:1px solid rgba(99,102,241,.4);
+    font-weight:800;color:#e0e7ff
+}
+</style>
 </head>
+
 <body>
-    <div class="container">
-        <h1>📚 Registrar Grupo</h1>
-        
-        <div class="navegacion">
-            <a href="configurar_catalogos.php" class="nav-link">Catálogo Carreras</a>
-            <a href="registrar_grupo.php" class="nav-link active">Registrar Grupo</a>
-            <a href="registrar_alumno.php" class="nav-link">Registrar Alumno</a>
-            <a href="alumnos_registrados.php" class="nav-link">Ver Alumnos</a>
-        </div>
-        
-        <?php if ($mensaje): ?>
-            <div class="mensaje <?php echo $tipo_mensaje; ?>">
-                <?php echo $mensaje; ?>
-            </div>
-        <?php endif; ?>
-        
-        <form method="POST" action="">
-            <div class="form-group">
-                <label for="carrera">Carrera / Sistemas</label>
-                <input type="text" id="carrera" name="carrera" placeholder="Ej: Sistemas" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="turno">Turno</label>
-                <select id="turno" name="turno" required>
-                    <option value="">Seleccione un turno</option>
-                    <option value="Vespertino">Vespertino</option>
-                    <option value="Matutino">Matutino</option>
-                    <option value="Nocturno">Mixto</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="grado">Grado</label>
-                <input type="text" id="grado" name="grado" placeholder="Ej: 8" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="grupo">Grupo (código único)</label>
-                <input type="text" id="grupo" name="grupo" placeholder="Ej: ISC801-V" required>
-                <small style="color: #999; font-size: 12px; display: block; margin-top: 5px;">
-                    Este código debe ser único. No se puede repetir.
-                </small>
-            </div>
-            
-            <button type="submit" class="btn">Registrar Grupo</button>
-        </form>
-        
-        <div class="grupos-lista">
-            <h2>Grupos Registrados</h2>
-            
-            <?php if ($grupos_registrados->num_rows > 0): ?>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Carrera</th>
-                            <th>Turno</th>
-                            <th>Grado</th>
-                            <th>Grupo</th>
-                            <th>Fecha Registro</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php while($grupo = $grupos_registrados->fetch_assoc()): ?>
-                            <tr>
-                                <td><?php echo htmlspecialchars($grupo['carrera']); ?></td>
-                                <td><?php echo htmlspecialchars($grupo['turno']); ?></td>
-                                <td><?php echo htmlspecialchars($grupo['grado']); ?></td>
-                                <td><span class="badge"><?php echo htmlspecialchars($grupo['grupo']); ?></span></td>
-                                <td><?php echo date('d/m/Y', strtotime($grupo['fecha_registro'])); ?></td>
-                            </tr>
-                        <?php endwhile; ?>
-                    </tbody>
-                </table>
-            <?php else: ?>
-                <div class="empty-state">
-                    <p>No hay grupos registrados aún.</p>
-                </div>
-            <?php endif; ?>
-        </div>
+<div class="wrap">
+
+<div class="header">
+    <h1>📚 Registrar Grupo</h1>
+    <a href="index.php" class="btn">🏠 Volver al Inicio</a>
+</div>
+
+<div class="card">
+
+<?php if($mensaje): ?>
+    <div class="mensaje <?php echo $tipo_mensaje; ?>">
+        <?php echo htmlspecialchars($mensaje); ?>
     </div>
+<?php endif; ?>
+
+<form method="POST">
+    <div>
+        <label>Carrera</label>
+        <select name="id_carrera" required>
+            <option value="">Seleccione</option>
+            <?php while($c=$carreras->fetch_assoc()): ?>
+                <option value="<?php echo $c['id_carrera']; ?>">
+                    <?php echo htmlspecialchars($c['nombre']); ?>
+                </option>
+            <?php endwhile; ?>
+        </select>
+    </div>
+
+    <div>
+        <label>Turno</label>
+        <select name="id_turno" required>
+            <option value="">Seleccione</option>
+            <?php while($t=$turnos->fetch_assoc()): ?>
+                <option value="<?php echo $t['id_turno']; ?>">
+                    <?php echo htmlspecialchars($t['nombre']); ?>
+                </option>
+            <?php endwhile; ?>
+        </select>
+    </div>
+
+    <div>
+        <label>Grado</label>
+        <select name="id_grado" required>
+            <option value="">Seleccione</option>
+            <?php while($g=$grados->fetch_assoc()): ?>
+                <option value="<?php echo $g['id_grado']; ?>">
+                    <?php echo htmlspecialchars($g['numero']); ?>
+                </option>
+            <?php endwhile; ?>
+        </select>
+    </div>
+
+    <div>
+        <label>Número de Grupo</label>
+        <input type="number" name="numero_grupo" min="1" max="99" required>
+    </div>
+
+    <button type="submit">Registrar Grupo</button>
+</form>
+
+<?php if($grupos->num_rows): ?>
+<table>
+<thead>
+<tr>
+    <th>Código</th><th>Carrera</th><th>Turno</th><th>Grado</th><th>Fecha</th>
+</tr>
+</thead>
+<tbody>
+<?php while($r=$grupos->fetch_assoc()): ?>
+<tr>
+    <td><span class="badge"><?php echo $r['codigo_grupo']; ?></span></td>
+    <td><?php echo $r['carrera']; ?></td>
+    <td><?php echo $r['turno']; ?></td>
+    <td><?php echo $r['grado']; ?></td>
+    <td><?php echo date('d/m/Y H:i',strtotime($r['fecha_registro'])); ?></td>
+</tr>
+<?php endwhile; ?>
+</tbody>
+</table>
+<?php endif; ?>
+
+</div>
+</div>
 </body>
 </html>

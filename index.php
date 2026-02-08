@@ -4,24 +4,44 @@ require_once 'config.php';
 // Obtener estadísticas del sistema
 $conn = getConnection();
 
-// Total de carreras
-$total_carreras = $conn->query("SELECT COUNT(*) as total FROM carreras")->fetch_assoc()['total'];
-$carreras_activas = $conn->query("SELECT COUNT(*) as total FROM carreras WHERE activa = 1")->fetch_assoc()['total'];
+// Totales
+$total_carreras   = (int)($conn->query("SELECT COUNT(*) AS total FROM carrera")->fetch_assoc()['total'] ?? 0);
+$carreras_activas = (int)($conn->query("SELECT COUNT(*) AS total FROM carrera WHERE activo = 1")->fetch_assoc()['total'] ?? 0);
 
-// Total de grupos
-$total_grupos = $conn->query("SELECT COUNT(*) as total FROM grupos")->fetch_assoc()['total'];
+$total_grupos  = (int)($conn->query("SELECT COUNT(*) AS total FROM grupo")->fetch_assoc()['total'] ?? 0);
+$total_alumnos = (int)($conn->query("SELECT COUNT(*) AS total FROM alumno")->fetch_assoc()['total'] ?? 0);
 
-// Total de alumnos
-$total_alumnos = $conn->query("SELECT COUNT(*) as total FROM alumnos")->fetch_assoc()['total'];
+// Últimos alumnos (solo de catálogos activos)
+$ultimos_alumnos = $conn->query("
+    SELECT
+        a.id_alumno, a.nombre, a.apellido_p, a.apellido_m, a.fecha_registro,
+        g.codigo_grupo,
+        c.nombre AS carrera
+    FROM alumno a
+    INNER JOIN grupo g   ON a.id_grupo = g.id_grupo
+    INNER JOIN carrera c ON g.id_carrera = c.id_carrera
+    INNER JOIN turno t   ON g.id_turno = t.id_turno
+    INNER JOIN grado gr  ON g.id_grado = gr.id_grado
+    WHERE c.activo = 1 AND t.activo = 1 AND gr.activo = 1
+    ORDER BY a.fecha_registro DESC
+    LIMIT 5
+");
 
-// Últimos registros
-$ultimos_alumnos = $conn->query("SELECT a.*, g.grupo, g.carrera 
-                                 FROM alumnos a 
-                                 INNER JOIN grupos g ON a.grupo_id = g.id 
-                                 ORDER BY a.fecha_registro DESC 
-                                 LIMIT 5");
-
-$ultimos_grupos = $conn->query("SELECT * FROM grupos ORDER BY fecha_registro DESC LIMIT 5");
+// Últimos grupos (solo de catálogos activos)
+$ultimos_grupos = $conn->query("
+    SELECT
+        g.id_grupo, g.codigo_grupo, g.fecha_registro,
+        c.nombre AS carrera,
+        t.nombre AS turno,
+        gr.numero AS grado
+    FROM grupo g
+    INNER JOIN carrera c ON g.id_carrera = c.id_carrera
+    INNER JOIN turno t   ON g.id_turno = t.id_turno
+    INNER JOIN grado gr  ON g.id_grado = gr.id_grado
+    WHERE c.activo = 1 AND t.activo = 1 AND gr.activo = 1
+    ORDER BY g.fecha_registro DESC
+    LIMIT 5
+");
 
 $conn->close();
 ?>
@@ -35,11 +55,7 @@ $conn->close();
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -48,22 +64,18 @@ $conn->close();
             position: relative;
         }
 
-        /* Fondo animado */
         body::before {
             content: '';
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: 
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background:
                 radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
                 radial-gradient(circle at 80% 80%, rgba(99, 102, 241, 0.2) 0%, transparent 50%),
                 radial-gradient(circle at 40% 20%, rgba(168, 85, 247, 0.15) 0%, transparent 50%);
             z-index: 0;
         }
 
-        /* Header y Navegación */
         .header {
             background: rgba(15, 15, 30, 0.8);
             backdrop-filter: blur(20px);
@@ -82,6 +94,7 @@ $conn->close();
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 20px;
         }
 
         .logo {
@@ -123,6 +136,7 @@ $conn->close();
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
+            justify-content: flex-end;
         }
 
         .nav-btn {
@@ -159,7 +173,6 @@ $conn->close();
             border-color: rgba(139, 92, 246, 0.5);
         }
 
-        /* Contenido Principal */
         .main-content {
             max-width: 1400px;
             margin: 0 auto;
@@ -168,7 +181,6 @@ $conn->close();
             z-index: 1;
         }
 
-        /* Banner de Bienvenida */
         .welcome-banner {
             background: rgba(15, 15, 30, 0.5);
             backdrop-filter: blur(20px);
@@ -185,15 +197,13 @@ $conn->close();
         .welcome-banner::before {
             content: '';
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
+            top: 0; left: 0; right: 0;
             height: 2px;
-            background: linear-gradient(90deg, 
-                transparent 0%, 
-                #6366f1 20%, 
-                #8b5cf6 50%, 
-                #6366f1 80%, 
+            background: linear-gradient(90deg,
+                transparent 0%,
+                #6366f1 20%,
+                #8b5cf6 50%,
+                #6366f1 80%,
                 transparent 100%
             );
         }
@@ -259,7 +269,6 @@ $conn->close();
             box-shadow: 0 12px 30px rgba(99, 102, 241, 0.3);
         }
 
-        /* Tarjetas de Estadísticas */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -282,18 +291,14 @@ $conn->close();
         .stat-card::before {
             content: '';
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
+            top: 0; left: 0; right: 0;
             height: 2px;
             background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
             opacity: 0;
             transition: opacity 0.3s;
         }
 
-        .stat-card:hover::before {
-            opacity: 1;
-        }
+        .stat-card:hover::before { opacity: 1; }
 
         .stat-card:hover {
             transform: translateY(-8px);
@@ -314,9 +319,7 @@ $conn->close();
             transition: all 0.3s;
         }
 
-        .stat-card:hover .stat-icon {
-            transform: scale(1.1) rotate(5deg);
-        }
+        .stat-card:hover .stat-icon { transform: scale(1.1) rotate(5deg); }
 
         .stat-number {
             font-size: 48px;
@@ -342,7 +345,6 @@ $conn->close();
             font-weight: 400;
         }
 
-        /* Secciones de Últimos Registros */
         .recent-section {
             background: rgba(15, 15, 30, 0.5);
             backdrop-filter: blur(20px);
@@ -385,18 +387,13 @@ $conn->close();
         .recent-item::before {
             content: '';
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 3px;
-            height: 100%;
+            top: 0; left: 0;
+            width: 3px; height: 100%;
             background: linear-gradient(180deg, #6366f1 0%, #8b5cf6 100%);
             transition: width 0.3s;
         }
 
-        .recent-item:hover::before {
-            width: 100%;
-            opacity: 0.05;
-        }
+        .recent-item:hover::before { width: 100%; opacity: 0.05; }
 
         .recent-item:hover {
             background: rgba(255, 255, 255, 0.05);
@@ -455,246 +452,165 @@ $conn->close();
             font-weight: 500;
         }
 
-        /* Efectos de partículas decorativas */
-        .particles {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 0;
-        }
-
-        /* Responsive */
         @media (max-width: 768px) {
-            .header-content {
-                flex-direction: column;
-                gap: 24px;
-                padding: 0 20px;
-            }
-
-            .nav-buttons {
-                justify-content: center;
-                width: 100%;
-            }
-
-            .nav-btn {
-                flex: 1;
-                justify-content: center;
-                min-width: 140px;
-            }
-
-            .welcome-banner {
-                padding: 40px 24px;
-            }
-
-            .welcome-banner h2 {
-                font-size: 32px;
-            }
-
-            .welcome-banner p {
-                font-size: 16px;
-            }
-
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .recent-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .main-content {
-                padding: 30px 20px;
-            }
+            .header-content { flex-direction: column; gap: 24px; padding: 0 20px; }
+            .nav-buttons { justify-content: center; width: 100%; }
+            .nav-btn { flex: 1; justify-content: center; min-width: 140px; }
+            .welcome-banner { padding: 40px 24px; }
+            .welcome-banner h2 { font-size: 32px; }
+            .welcome-banner p { font-size: 16px; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .recent-grid { grid-template-columns: 1fr; }
+            .main-content { padding: 30px 20px; }
         }
 
-        /* Animaciones */
         @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        .stat-card {
-            animation: fadeInUp 0.6s ease backwards;
-        }
-
+        .stat-card { animation: fadeInUp 0.6s ease backwards; }
         .stat-card:nth-child(1) { animation-delay: 0.1s; }
         .stat-card:nth-child(2) { animation-delay: 0.2s; }
         .stat-card:nth-child(3) { animation-delay: 0.3s; }
         .stat-card:nth-child(4) { animation-delay: 0.4s; }
 
-        /* Scrollbar personalizada */
-        ::-webkit-scrollbar {
-            width: 10px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: rgba(15, 15, 30, 0.5);
-        }
-
+        ::-webkit-scrollbar { width: 10px; }
+        ::-webkit-scrollbar-track { background: rgba(15, 15, 30, 0.5); }
         ::-webkit-scrollbar-thumb {
             background: linear-gradient(180deg, #6366f1 0%, #8b5cf6 100%);
             border-radius: 5px;
         }
-
         ::-webkit-scrollbar-thumb:hover {
             background: linear-gradient(180deg, #8b5cf6 0%, #6366f1 100%);
         }
     </style>
 </head>
 <body>
-    <!-- Header con Navegación -->
-    <header class="header">
-        <div class="header-content">
-            <div class="logo">
-                <div class="logo-icon">🎓</div>
-                <div class="logo-text">
-                    <h1>Sistema de Gestión Escolar</h1>
-                    <p>Administración de Carreras, Grupos y Alumnos</p>
+<header class="header">
+    <div class="header-content">
+        <div class="logo">
+            <div class="logo-icon">🎓</div>
+            <div class="logo-text">
+                <h1>Sistema de Gestión Escolar</h1>
+                <p>Administración de Carreras, Grupos y Alumnos</p>
+            </div>
+        </div>
+
+        <nav class="nav-buttons">
+            <a href="configurar_catalogos.php" class="nav-btn">⚙️ Catálogo Carreras</a>
+            <a href="registrar_grupo.php" class="nav-btn">📚 Registrar Grupo</a>
+            <a href="registrar_alumno.php" class="nav-btn primary">➕ Registrar Alumno</a>
+            <a href="alumnos_registrados.php" class="nav-btn">👥 Ver Alumnos</a>
+        </nav>
+    </div>
+</header>
+
+<main class="main-content">
+    <section class="welcome-banner">
+        <h2>¡Bienvenido al Sistema de Gestión Escolar!</h2>
+        <p>Administra eficientemente carreras, grupos y alumnos desde un solo lugar</p>
+
+        <div class="quick-actions">
+            <a href="registrar_carrera.php" class="quick-action-btn">📝 Nueva Carrera</a>
+            <a href="registrar_grupo.php" class="quick-action-btn">📚 Nuevo Grupo</a>
+            <a href="registrar_alumno.php" class="quick-action-btn">👤 Nuevo Alumno</a>
+        </div>
+    </section>
+
+    <section class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon">📚</div>
+            <div class="stat-number"><?php echo $total_carreras; ?></div>
+            <div class="stat-label">Carreras Registradas</div>
+            <div class="stat-sublabel"><?php echo $carreras_activas; ?> activas</div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon">📖</div>
+            <div class="stat-number"><?php echo $total_grupos; ?></div>
+            <div class="stat-label">Grupos Creados</div>
+            <div class="stat-sublabel">En todas las carreras</div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon">👨‍🎓</div>
+            <div class="stat-number"><?php echo $total_alumnos; ?></div>
+            <div class="stat-label">Alumnos Inscritos</div>
+            <div class="stat-sublabel">Total en el sistema</div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-number"><?php echo $total_grupos > 0 ? round($total_alumnos / $total_grupos, 1) : 0; ?></div>
+            <div class="stat-label">Promedio por Grupo</div>
+            <div class="stat-sublabel">Alumnos por grupo</div>
+        </div>
+    </section>
+
+    <div class="recent-grid">
+        <section class="recent-section">
+            <h3><span>👨‍🎓</span> Últimos Alumnos Registrados</h3>
+
+            <?php if ($ultimos_alumnos && $ultimos_alumnos->num_rows > 0): ?>
+                <?php while($alumno = $ultimos_alumnos->fetch_assoc()): ?>
+                    <div class="recent-item">
+                        <div class="recent-item-header">
+                            <?php echo htmlspecialchars($alumno['nombre'] . ' ' . $alumno['apellido_p'] . ' ' . $alumno['apellido_m']); ?>
+                        </div>
+
+                        <div class="recent-item-detail">
+                            <span class="badge"><?php echo htmlspecialchars($alumno['codigo_grupo']); ?></span>
+                        </div>
+
+                        <div class="recent-item-detail">
+                            📚 <?php echo htmlspecialchars($alumno['carrera']); ?>
+                        </div>
+
+                        <div class="recent-item-date">
+                            🕒 <?php echo date('d/m/Y H:i', strtotime($alumno['fecha_registro'])); ?>
+                        </div>
+                    </div>
+                <?php endwhile; ?>
+            <?php else: ?>
+                <div class="empty-state">
+                    <div class="empty-state-icon">📭</div>
+                    <p>No hay alumnos registrados aún</p>
                 </div>
-            </div>
-
-            <nav class="nav-buttons">
-                <a href="configurar_catalogos.php" class="nav-btn">
-                    ⚙️ Catálogo Carreras
-                </a>
-                <a href="registrar_grupo.php" class="nav-btn">
-                    📚 Registrar Grupo
-                </a>
-                <a href="registrar_alumno.php" class="nav-btn primary">
-                    ➕ Registrar Alumno
-                </a>
-                <a href="alumnos_registrados.php" class="nav-btn">
-                    👥 Ver Alumnos
-                </a>
-            </nav>
-        </div>
-    </header>
-
-    <!-- Contenido Principal -->
-    <main class="main-content">
-        <!-- Banner de Bienvenida -->
-        <section class="welcome-banner">
-            <h2>¡Bienvenido al Sistema de Gestión Escolar!</h2>
-            <p>Administra eficientemente carreras, grupos y alumnos desde un solo lugar</p>
-
-            <div class="quick-actions">
-                <a href="registrar_carrera.php" class="quick-action-btn">
-                    📝 Nueva Carrera
-                </a>
-                <a href="registrar_grupo.php" class="quick-action-btn">
-                    📚 Nuevo Grupo
-                </a>
-                <a href="registrar_alumno.php" class="quick-action-btn">
-                    👤 Nuevo Alumno
-                </a>
-            </div>
+            <?php endif; ?>
         </section>
 
-        <!-- Estadísticas -->
-        <section class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon">📚</div>
-                <div class="stat-number"><?php echo $total_carreras; ?></div>
-                <div class="stat-label">Carreras Registradas</div>
-                <div class="stat-sublabel"><?php echo $carreras_activas; ?> activas</div>
-            </div>
+        <section class="recent-section">
+            <h3><span>📚</span> Últimos Grupos Creados</h3>
 
-            <div class="stat-card">
-                <div class="stat-icon">📖</div>
-                <div class="stat-number"><?php echo $total_grupos; ?></div>
-                <div class="stat-label">Grupos Creados</div>
-                <div class="stat-sublabel">En todas las carreras</div>
-            </div>
+            <?php if ($ultimos_grupos && $ultimos_grupos->num_rows > 0): ?>
+                <?php while($grupo = $ultimos_grupos->fetch_assoc()): ?>
+                    <div class="recent-item">
+                        <div class="recent-item-header">
+                            <span class="badge"><?php echo htmlspecialchars($grupo['codigo_grupo']); ?></span>
+                        </div>
 
-            <div class="stat-card">
-                <div class="stat-icon">👨‍🎓</div>
-                <div class="stat-number"><?php echo $total_alumnos; ?></div>
-                <div class="stat-label">Alumnos Inscritos</div>
-                <div class="stat-sublabel">Total en el sistema</div>
-            </div>
+                        <div class="recent-item-detail">
+                            📚 <?php echo htmlspecialchars($grupo['carrera']); ?>
+                        </div>
 
-            <div class="stat-card">
-                <div class="stat-icon">📊</div>
-                <div class="stat-number"><?php echo $total_grupos > 0 ? round($total_alumnos / $total_grupos, 1) : 0; ?></div>
-                <div class="stat-label">Promedio por Grupo</div>
-                <div class="stat-sublabel">Alumnos por grupo</div>
-            </div>
+                        <div class="recent-item-detail">
+                            🕐 <?php echo htmlspecialchars($grupo['turno']); ?> - Grado: <?php echo htmlspecialchars($grupo['grado']); ?>
+                        </div>
+
+                        <div class="recent-item-date">
+                            🕒 <?php echo date('d/m/Y H:i', strtotime($grupo['fecha_registro'])); ?>
+                        </div>
+                    </div>
+                <?php endwhile; ?>
+            <?php else: ?>
+                <div class="empty-state">
+                    <div class="empty-state-icon">📭</div>
+                    <p>No hay grupos registrados aún</p>
+                </div>
+            <?php endif; ?>
         </section>
-
-        <!-- Últimos Registros -->
-        <div class="recent-grid">
-            <!-- Últimos Alumnos -->
-            <section class="recent-section">
-                <h3>
-                    <span>👨‍🎓</span>
-                    Últimos Alumnos Registrados
-                </h3>
-
-                <?php if ($ultimos_alumnos->num_rows > 0): ?>
-                    <?php while($alumno = $ultimos_alumnos->fetch_assoc()): ?>
-                        <div class="recent-item">
-                            <div class="recent-item-header">
-                                <?php echo htmlspecialchars($alumno['nombre'] . ' ' . $alumno['apellido_paterno'] . ' ' . $alumno['apellido_materno']); ?>
-                            </div>
-                            <div class="recent-item-detail">
-                                <span class="badge"><?php echo htmlspecialchars($alumno['grupo']); ?></span>
-                            </div>
-                            <div class="recent-item-detail">
-                                📚 <?php echo htmlspecialchars($alumno['carrera']); ?>
-                            </div>
-                            <div class="recent-item-date">
-                                🕒 <?php echo date('d/m/Y H:i', strtotime($alumno['fecha_registro'])); ?>
-                            </div>
-                        </div>
-                    <?php endwhile; ?>
-                <?php else: ?>
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📭</div>
-                        <p>No hay alumnos registrados aún</p>
-                    </div>
-                <?php endif; ?>
-            </section>
-
-            <!-- Últimos Grupos -->
-            <section class="recent-section">
-                <h3>
-                    <span>📚</span>
-                    Últimos Grupos Creados
-                </h3>
-
-                <?php if ($ultimos_grupos->num_rows > 0): ?>
-                    <?php while($grupo = $ultimos_grupos->fetch_assoc()): ?>
-                        <div class="recent-item">
-                            <div class="recent-item-header">
-                                <span class="badge"><?php echo htmlspecialchars($grupo['grupo']); ?></span>
-                            </div>
-                            <div class="recent-item-detail">
-                                📚 <?php echo htmlspecialchars($grupo['carrera']); ?>
-                            </div>
-                            <div class="recent-item-detail">
-                                🕐 <?php echo htmlspecialchars($grupo['turno']); ?> - Grado: <?php echo htmlspecialchars($grupo['grado']); ?>
-                            </div>
-                            <div class="recent-item-date">
-                                🕒 <?php echo date('d/m/Y H:i', strtotime($grupo['fecha_registro'])); ?>
-                            </div>
-                        </div>
-                    <?php endwhile; ?>
-                <?php else: ?>
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📭</div>
-                        <p>No hay grupos registrados aún</p>
-                    </div>
-                <?php endif; ?>
-            </section>
-        </div>
-    </main>
+    </div>
+</main>
 </body>
+</html>

@@ -4,45 +4,48 @@ require_once 'config.php';
 $mensaje = '';
 $tipo_mensaje = '';
 
-// Procesar el formulario cuando se envía
+$conn = getConnection();
+
+// PROCESAR FORMULARIO
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $nombre = trim($_POST['nombre']);
-    
-    if (!empty($nombre)) {
-        $conn = getConnection();
-        
-        // Verificar si la carrera ya existe
-        $stmt = $conn->prepare("SELECT id FROM carreras WHERE nombre = ?");
-        $stmt->bind_param("s", $nombre);
+    $nombre = isset($_POST['nombre']) ? trim($_POST['nombre']) : '';
+    $codigo = isset($_POST['codigo']) ? trim($_POST['codigo']) : '';
+
+    if ($nombre !== '' && $codigo !== '') {
+
+        // Verificar si ya existe la carrera
+        $stmt = $conn->prepare("SELECT id_carrera FROM carrera WHERE codigo = ?");
+        $stmt->bind_param("s", $codigo);
         $stmt->execute();
         $resultado = $stmt->get_result();
-        
+
         if ($resultado->num_rows > 0) {
-            $mensaje = "¡Error! La carrera '$nombre' ya existe en el catálogo.";
-            $tipo_mensaje = 'error';
+            $mensaje = "La carrera con código $codigo ya existe";
+            $tipo_mensaje = "error";
         } else {
-            // Insertar la nueva carrera
-            $stmt = $conn->prepare("INSERT INTO carreras (nombre, activa) VALUES (?, 1)");
-            $stmt->bind_param("s", $nombre);
-            
+            // Insertar carrera
+            $stmt = $conn->prepare("INSERT INTO carrera (nombre, codigo, activo) VALUES (?, ?, 1)");
+            $stmt->bind_param("ss", $nombre, $codigo);
+
             if ($stmt->execute()) {
-                $mensaje = "¡Carrera '$nombre' registrada exitosamente!";
-                $tipo_mensaje = 'exito';
-                // Limpiar el formulario
-                $_POST = array();
+                $mensaje = "Carrera registrada correctamente";
+                $tipo_mensaje = "exito";
             } else {
-                $mensaje = "Error al registrar la carrera: " . $conn->error;
-                $tipo_mensaje = 'error';
+                $mensaje = "Error al registrar carrera";
+                $tipo_mensaje = "error";
             }
         }
-        
+
         $stmt->close();
-        $conn->close();
     } else {
-        $mensaje = "Por favor ingrese el nombre de la carrera";
-        $tipo_mensaje = 'error';
+        $mensaje = "Completa todos los campos";
+        $tipo_mensaje = "error";
     }
 }
+
+// LISTAR CARRERAS
+$carreras = $conn->query("SELECT * FROM carrera ORDER BY nombre");
+$conn->close();
 ?>
 
 <!DOCTYPE html>
@@ -51,225 +54,320 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Registrar Carrera</title>
+
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+        *{margin:0;padding:0;box-sizing:border-box}
+
+        body{
+            font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+            background:#0f0f1e;
+            min-height:100vh;
+            padding:22px;
+            position:relative;
         }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
+
+        /* Fondo estilo index */
+        body::before{
+            content:'';
+            position:fixed;
+            top:0;left:0;width:100%;height:100%;
+            background:
+                radial-gradient(circle at 20% 50%, rgba(120,119,198,.30) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(99,102,241,.20) 0%, transparent 50%),
+                radial-gradient(circle at 40% 20%, rgba(168,85,247,.15) 0%, transparent 50%);
+            z-index:0;
         }
-        
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            padding: 30px;
+
+        .wrap{
+            max-width:1050px;
+            margin:0 auto;
+            position:relative;
+            z-index:1;
         }
-        
-        h1 {
-            color: #333;
-            text-align: center;
-            margin-bottom: 10px;
-            font-size: 28px;
+
+        .topbar{
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            gap:14px;
+            flex-wrap:wrap;
+            margin-bottom:18px;
         }
-        
-        .navegacion {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #f0f0f0;
-            flex-wrap: wrap;
+
+        .title{
+            display:flex;
+            align-items:center;
+            gap:12px;
         }
-        
-        .nav-link {
-            padding: 10px 20px;
-            background: #667eea;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            transition: all 0.3s;
-            font-size: 14px;
+        .logo{
+            width:46px;height:46px;
+            border-radius:12px;
+            background:linear-gradient(135deg,#6366f1 0%, #8b5cf6 100%);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:24px;
+            box-shadow:0 10px 25px rgba(99,102,241,.25);
         }
-        
-        .nav-link:hover {
-            background: #764ba2;
-            transform: translateY(-2px);
+        .title h1{
+            color:#fff;
+            font-size:22px;
+            font-weight:800;
+            letter-spacing:-.4px;
         }
-        
-        .nav-link.active {
-            background: #764ba2;
+        .title p{
+            color:rgba(255,255,255,.55);
+            font-size:13px;
+            margin-top:2px;
         }
-        
-        .mensaje {
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-weight: 500;
+
+        .btns{
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
         }
-        
-        .mensaje.exito {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+
+        .btn{
+            padding:11px 16px;
+            border-radius:10px;
+            text-decoration:none;
+            font-weight:600;
+            font-size:14px;
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+            border:1px solid rgba(255,255,255,.12);
+            background:rgba(255,255,255,.06);
+            color:rgba(255,255,255,.9);
+            backdrop-filter:blur(14px);
+            transition:all .25s ease;
         }
-        
-        .mensaje.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+        .btn:hover{
+            transform:translateY(-2px);
+            border-color:rgba(99,102,241,.45);
+            box-shadow:0 12px 26px rgba(99,102,241,.18);
+            background:rgba(255,255,255,.10);
         }
-        
-        .form-group {
-            margin-bottom: 20px;
+        .btn.primary{
+            background:linear-gradient(135deg,#6366f1 0%, #8b5cf6 100%);
+            border-color:rgba(99,102,241,.45);
+            color:#fff;
         }
-        
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #555;
-            font-weight: 600;
-            font-size: 14px;
+        .btn.primary:hover{
+            box-shadow:0 14px 30px rgba(99,102,241,.30);
         }
-        
-        input {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 15px;
-            transition: border 0.3s;
+
+        .card{
+            background:rgba(15,15,30,.52);
+            backdrop-filter:blur(22px);
+            border:1px solid rgba(255,255,255,.10);
+            border-radius:18px;
+            box-shadow:0 16px 60px rgba(0,0,0,.30);
+            padding:24px;
+            animation:fadeInUp .5s ease both;
         }
-        
-        input:focus {
-            outline: none;
-            border-color: #667eea;
+
+        @keyframes fadeInUp{
+            from{opacity:0;transform:translateY(18px)}
+            to{opacity:1;transform:translateY(0)}
         }
-        
-        .btn {
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-bottom: 15px;
+
+        .section-title{
+            color:rgba(255,255,255,.95);
+            font-size:16px;
+            font-weight:700;
+            margin-bottom:14px;
+            display:flex;
+            align-items:center;
+            gap:10px;
         }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+
+        .form{
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:14px;
+            margin-bottom:18px;
         }
-        
-        .btn-secundario {
-            background: #6c757d;
+
+        label{
+            display:block;
+            color:rgba(255,255,255,.75);
+            font-size:13px;
+            font-weight:600;
+            margin-bottom:8px;
         }
-        
-        .btn-secundario:hover {
-            background: #5a6268;
+
+        input{
+            width:100%;
+            padding:12px 12px;
+            border-radius:12px;
+            border:1px solid rgba(255,255,255,.12);
+            background:rgba(255,255,255,.06);
+            color:#fff;
+            outline:none;
+            transition:border .2s ease, box-shadow .2s ease;
         }
-        
-        .info-box {
-            background: #e7f3ff;
-            border-left: 4px solid #2196F3;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 5px;
+        input::placeholder{color:rgba(255,255,255,.35)}
+        input:focus{
+            border-color:rgba(99,102,241,.55);
+            box-shadow:0 0 0 4px rgba(99,102,241,.18);
         }
-        
-        .info-box p {
-            margin: 0;
-            color: #1976D2;
-            font-size: 14px;
+
+        .full{grid-column:1 / -1;}
+
+        .submit{
+            width:100%;
+            padding:14px 16px;
+            border:none;
+            border-radius:12px;
+            cursor:pointer;
+            font-weight:800;
+            letter-spacing:.2px;
+            color:#fff;
+            background:linear-gradient(135deg,#6366f1 0%, #8b5cf6 100%);
+            transition:all .25s ease;
         }
-        
-        .ejemplos {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 10px;
+        .submit:hover{
+            transform:translateY(-2px);
+            box-shadow:0 14px 30px rgba(99,102,241,.30);
         }
-        
-        .ejemplos p {
-            margin: 0 0 10px 0;
-            color: #666;
-            font-size: 13px;
-            font-weight: 600;
+
+        .mensaje{
+            margin:14px 0 18px;
+            padding:12px 14px;
+            border-radius:12px;
+            font-weight:700;
+            font-size:13px;
+            border:1px solid rgba(255,255,255,.10);
+            background:rgba(255,255,255,.06);
+            color:rgba(255,255,255,.9);
         }
-        
-        .ejemplos ul {
-            margin: 0;
-            padding-left: 20px;
+        .mensaje.exito{
+            border-color:rgba(34,197,94,.35);
+            background:rgba(34,197,94,.10);
+            color:#bbf7d0;
         }
-        
-        .ejemplos li {
-            color: #999;
-            font-size: 13px;
-            margin-bottom: 5px;
+        .mensaje.error{
+            border-color:rgba(239,68,68,.35);
+            background:rgba(239,68,68,.10);
+            color:#fecaca;
+        }
+
+        table{
+            width:100%;
+            border-collapse:collapse;
+            overflow:hidden;
+            border-radius:14px;
+        }
+        th,td{
+            padding:12px 12px;
+            border-bottom:1px solid rgba(255,255,255,.08);
+            text-align:left;
+        }
+        th{
+            background:rgba(255,255,255,.06);
+            color:rgba(255,255,255,.9);
+            font-size:13px;
+            font-weight:800;
+        }
+        td{
+            color:rgba(255,255,255,.75);
+            font-size:13px;
+        }
+        tr:hover td{
+            background:rgba(255,255,255,.04);
+        }
+
+        .badge{
+            display:inline-block;
+            padding:6px 12px;
+            border-radius:999px;
+            background:linear-gradient(135deg, rgba(99,102,241,.20) 0%, rgba(139,92,246,.20) 100%);
+            border:1px solid rgba(99,102,241,.35);
+            color:#c7d2fe;
+            font-size:12px;
+            font-weight:800;
+            letter-spacing:.4px;
+        }
+
+        .muted{
+            color:rgba(255,255,255,.45);
+            font-size:12px;
+            margin-top:8px;
+        }
+
+        @media (max-width: 820px){
+            .form{grid-template-columns:1fr}
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📚 Registrar Carrera</h1>
-        
-        <div class="navegacion">
-            <a href="configurar_catalogos.php" class="nav-link">Catálogo Carreras</a>
-            <a href="registrar_grupo.php" class="nav-link">Registrar Grupo</a>
-            <a href="registrar_alumno.php" class="nav-link">Registrar Alumno</a>
-            <a href="alumnos_registrados.php" class="nav-link">Ver Alumnos</a>
+<div class="wrap">
+
+    <div class="topbar">
+        <div class="title">
+            <div class="logo">🎓</div>
+            <div>
+                <h1>Registrar Carrera</h1>
+                <p>Catálogo de carreras (nombre, código y estado)</p>
+            </div>
         </div>
-        
+
+        <div class="btns">
+            <a class="btn primary" href="index.php">🏠 Volver al Inicio</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="section-title">📝 Alta de carrera</div>
+
         <?php if ($mensaje): ?>
             <div class="mensaje <?php echo $tipo_mensaje; ?>">
-                <?php echo $mensaje; ?>
+                <?php echo htmlspecialchars($mensaje); ?>
             </div>
         <?php endif; ?>
-        
-        <div class="info-box">
-            <p>ℹ️ Registre las carreras que se ofrecen en la institución. Posteriormente podrá asignar grupos a estas carreras.</p>
-        </div>
-        
-        <form method="POST" action="">
-            <div class="form-group">
-                <label for="nombre">Nombre de la Carrera</label>
-                <input type="text" 
-                       id="nombre" 
-                       name="nombre" 
-                       placeholder="Ej: Sistemas, Psicología, Pedagogía" 
-                       required 
-                       autofocus>
-                
-                <div class="ejemplos">
-                    <p>Ejemplos de carreras:</p>
-                    <ul>
-                        <li>Sistemas</li>
-                        <li>Psicología</li>
-                        <li>Pedagogía</li>
-                        <li>Administración</li>
-                        <li>Contabilidad</li>
-                    </ul>
-                </div>
+
+        <form class="form" method="POST">
+            <div>
+                <label>Nombre de la carrera</label>
+                <input name="nombre" placeholder="Ej: Sistemas Computacionales" required>
             </div>
-            
-            <button type="submit" class="btn">Registrar Carrera</button>
-            <a href="configurar_catalogos.php" class="btn btn-secundario" style="display: block; text-align: center; text-decoration: none; line-height: 1.5;">
-                ← Volver al Catálogo
-            </a>
+
+            <div>
+                <label>Código (3 letras)</label>
+                <input name="codigo" placeholder="Ej: ISC" maxlength="5" required>
+            </div>
+
+            <div class="full">
+                <button class="submit" type="submit">Guardar Carrera</button>
+                <div class="muted">Tip: Usa un código corto (ISC, TUR, ADM...).</div>
+            </div>
         </form>
+
+        <div class="section-title">📋 Carreras registradas</div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Código</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php while ($c = $carreras->fetch_assoc()): ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($c['nombre']); ?></td>
+                        <td><span class="badge"><?php echo htmlspecialchars($c['codigo']); ?></span></td>
+                        <td><?php echo ((int)$c['activo'] === 1) ? 'Activa' : 'Inactiva'; ?></td>
+                    </tr>
+                <?php endwhile; ?>
+            </tbody>
+        </table>
+
     </div>
+</div>
 </body>
 </html>

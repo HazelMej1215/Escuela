@@ -4,461 +4,433 @@ require_once 'config.php';
 $mensaje = '';
 $tipo_mensaje = '';
 
-// Procesar eliminación de carrera
-if (isset($_GET['eliminar'])) {
-    $id = intval($_GET['eliminar']);
+try {
     $conn = getConnection();
-    
-    // Verificar si la carrera está siendo usada en grupos
-    $stmt = $conn->prepare("SELECT COUNT(*) as total FROM grupos WHERE carrera = (SELECT nombre FROM carreras WHERE id = ?)");
-    $stmt->bind_param("i", $id);
-    $stmt->execute();
-    $resultado = $stmt->get_result()->fetch_assoc();
-    
-    if ($resultado['total'] > 0) {
-        $mensaje = "No se puede eliminar esta carrera porque tiene grupos asociados";
-        $tipo_mensaje = 'error';
-    } else {
-        $stmt = $conn->prepare("DELETE FROM carreras WHERE id = ?");
-        $stmt->bind_param("i", $id);
-        
-        if ($stmt->execute()) {
-            $mensaje = "Carrera eliminada exitosamente";
-            $tipo_mensaje = 'exito';
-        } else {
-            $mensaje = "Error al eliminar la carrera";
-            $tipo_mensaje = 'error';
+
+    $tab = $_GET['tab'] ?? 'carrera';
+    $validTabs = ['carrera', 'turno', 'grado'];
+    if (!in_array($tab, $validTabs)) $tab = 'carrera';
+
+    // ============================
+    // ACCIONES: ACTIVAR / DESACTIVAR
+    // ============================
+    if (isset($_GET['accion'], $_GET['id'])) {
+        $accion = $_GET['accion'];
+        $id = intval($_GET['id']);
+
+        if ($tab === 'carrera') {
+            if ($accion === 'desactivar') {
+                $stmt = $conn->prepare("UPDATE carrera SET activo=0 WHERE id_carrera=?");
+                $stmt->bind_param("i", $id);
+                $stmt->execute();
+                $stmt->close();
+                $mensaje = "Carrera desactivada";
+                $tipo_mensaje = "exito";
+            } elseif ($accion === 'activar') {
+                $stmt = $conn->prepare("UPDATE carrera SET activo=1 WHERE id_carrera=?");
+                $stmt->bind_param("i", $id);
+                $stmt->execute();
+                $stmt->close();
+                $mensaje = "Carrera activada";
+                $tipo_mensaje = "exito";
+            }
+        }
+
+        if ($tab === 'turno') {
+            if ($accion === 'desactivar') {
+                $stmt = $conn->prepare("UPDATE turno SET activo=0 WHERE id_turno=?");
+                $stmt->bind_param("i", $id);
+                $stmt->execute();
+                $stmt->close();
+                $mensaje = "Turno desactivado";
+                $tipo_mensaje = "exito";
+            } elseif ($accion === 'activar') {
+                $stmt = $conn->prepare("UPDATE turno SET activo=1 WHERE id_turno=?");
+                $stmt->bind_param("i", $id);
+                $stmt->bind_param("i", $id);
+                $stmt->execute();
+                $stmt->close();
+                $mensaje = "Turno activado";
+                $tipo_mensaje = "exito";
+            }
+        }
+
+        if ($tab === 'grado') {
+            if ($accion === 'desactivar') {
+                $stmt = $conn->prepare("UPDATE grado SET activo=0 WHERE id_grado=?");
+                $stmt->bind_param("i", $id);
+                $stmt->execute();
+                $stmt->close();
+                $mensaje = "Grado desactivado";
+                $tipo_mensaje = "exito";
+            } elseif ($accion === 'activar') {
+                $stmt = $conn->prepare("UPDATE grado SET activo=1 WHERE id_grado=?");
+                $stmt->bind_param("i", $id);
+                $stmt->execute();
+                $stmt->close();
+                $mensaje = "Grado activado";
+                $tipo_mensaje = "exito";
+            }
         }
     }
-    
-    $stmt->close();
-    $conn->close();
-}
 
-// Procesar activar/desactivar carrera
-if (isset($_GET['toggle'])) {
-    $id = intval($_GET['toggle']);
-    $conn = getConnection();
-    
-    $stmt = $conn->prepare("UPDATE carreras SET activa = NOT activa WHERE id = ?");
-    $stmt->bind_param("i", $id);
-    
-    if ($stmt->execute()) {
-        $mensaje = "Estado de carrera actualizado exitosamente";
-        $tipo_mensaje = 'exito';
-    } else {
-        $mensaje = "Error al actualizar el estado de la carrera";
-        $tipo_mensaje = 'error';
+    // ============================
+    // REGISTRO (INSERT)
+    // ============================
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+        if ($tab === 'carrera') {
+            $nombre = trim($_POST['nombre'] ?? '');
+            $codigo = trim($_POST['codigo'] ?? '');
+
+            if ($nombre !== '' && $codigo !== '') {
+                $stmt = $conn->prepare("INSERT INTO carrera (nombre, codigo, activo) VALUES (?, ?, 1)");
+                $stmt->bind_param("ss", $nombre, $codigo);
+                $stmt->execute();
+                $stmt->close();
+                $mensaje = "Carrera registrada";
+                $tipo_mensaje = "exito";
+            } else {
+                $mensaje = "Completa nombre y código";
+                $tipo_mensaje = "error";
+            }
+        }
+
+        if ($tab === 'turno') {
+            $nombre = trim($_POST['nombre'] ?? '');
+            $sigla = trim($_POST['sigla'] ?? '');
+
+            if ($nombre !== '' && $sigla !== '') {
+                $stmt = $conn->prepare("INSERT INTO turno (nombre, sigla, activo) VALUES (?, ?, 1)");
+                $stmt->bind_param("ss", $nombre, $sigla);
+                $stmt->execute();
+                $stmt->close();
+                $mensaje = "Turno registrado";
+                $tipo_mensaje = "exito";
+            } else {
+                $mensaje = "Completa nombre y sigla";
+                $tipo_mensaje = "error";
+            }
+        }
+
+        if ($tab === 'grado') {
+            $numero = intval($_POST['numero'] ?? 0);
+
+            if ($numero > 0) {
+                $stmt = $conn->prepare("INSERT INTO grado (numero, activo) VALUES (?, 1)");
+                $stmt->bind_param("i", $numero);
+                $stmt->execute();
+                $stmt->close();
+                $mensaje = "Grado registrado";
+                $tipo_mensaje = "exito";
+            } else {
+                $mensaje = "El grado debe ser un número válido";
+                $tipo_mensaje = "error";
+            }
+        }
     }
-    
-    $stmt->close();
+
+    // ============================
+    // LISTADOS
+    // ============================
+    $carreras = $conn->query("
+        SELECT 
+            c.*,
+            (SELECT COUNT(*) FROM grupo g WHERE g.id_carrera = c.id_carrera) AS total_grupos
+        FROM carrera c
+        ORDER BY c.nombre
+    ");
+
+    $turnos = $conn->query("
+        SELECT 
+            t.*,
+            (SELECT COUNT(*) FROM grupo g WHERE g.id_turno = t.id_turno) AS total_grupos
+        FROM turno t
+        ORDER BY t.nombre
+    ");
+
+    $grados = $conn->query("
+        SELECT 
+            gr.*,
+            (SELECT COUNT(*) FROM grupo g WHERE g.id_grado = gr.id_grado) AS total_grupos
+        FROM grado gr
+        ORDER BY gr.numero
+    ");
+
     $conn->close();
+
+} catch (Throwable $e) {
+    $mensaje = "Error interno: " . $e->getMessage();
+    $tipo_mensaje = "error";
 }
-
-// Obtener todas las carreras
-$conn = getConnection();
-$carreras = $conn->query("SELECT c.*, COUNT(g.id) as total_grupos 
-                          FROM carreras c 
-                          LEFT JOIN grupos g ON c.nombre = g.carrera 
-                          GROUP BY c.id 
-                          ORDER BY c.nombre");
-$conn->close();
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Configurar Catálogos - Carreras</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            padding: 30px;
-        }
-        
-        h1 {
-            color: #333;
-            text-align: center;
-            margin-bottom: 10px;
-            font-size: 28px;
-        }
-        
-        .navegacion {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #f0f0f0;
-            flex-wrap: wrap;
-        }
-        
-        .nav-link {
-            padding: 10px 20px;
-            background: #667eea;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            transition: all 0.3s;
-            font-size: 14px;
-        }
-        
-        .nav-link:hover {
-            background: #764ba2;
-            transform: translateY(-2px);
-        }
-        
-        .nav-link.active {
-            background: #764ba2;
-        }
-        
-        .mensaje {
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-weight: 500;
-        }
-        
-        .mensaje.exito {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .mensaje.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .header-actions {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 25px;
-        }
-        
-        .btn-registrar {
-            padding: 12px 25px;
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            transition: all 0.3s;
-            display: inline-block;
-        }
-        
-        .btn-registrar:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(40, 167, 69, 0.4);
-        }
-        
-        .tabla-contenedor {
-            overflow-x: auto;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        
-        th, td {
-            padding: 15px;
-            text-align: left;
-            border-bottom: 1px solid #f0f0f0;
-        }
-        
-        th {
-            background: #667eea;
-            color: white;
-            font-weight: 600;
-            font-size: 14px;
-        }
-        
-        tr:hover {
-            background: #f8f9fa;
-        }
-        
-        .badge {
-            display: inline-block;
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .badge-activa {
-            background: #d4edda;
-            color: #155724;
-        }
-        
-        .badge-inactiva {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        
-        .badge-grupos {
-            background: #cce5ff;
-            color: #004085;
-        }
-        
-        .acciones {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-        
-        .btn-accion {
-            padding: 8px 15px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 600;
-            text-decoration: none;
-            display: inline-block;
-            transition: all 0.3s;
-        }
-        
-        .btn-activar {
-            background: #28a745;
-            color: white;
-        }
-        
-        .btn-activar:hover {
-            background: #218838;
-            transform: translateY(-2px);
-        }
-        
-        .btn-desactivar {
-            background: #ffc107;
-            color: #333;
-        }
-        
-        .btn-desactivar:hover {
-            background: #e0a800;
-            transform: translateY(-2px);
-        }
-        
-        .btn-eliminar {
-            background: #dc3545;
-            color: white;
-        }
-        
-        .btn-eliminar:hover {
-            background: #c82333;
-            transform: translateY(-2px);
-        }
-        
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: #999;
-        }
-        
-        .empty-state-icon {
-            font-size: 64px;
-            margin-bottom: 20px;
-        }
-        
-        .empty-state h2 {
-            color: #666;
-            margin-bottom: 10px;
-        }
-        
-        .empty-state p {
-            color: #999;
-            margin-bottom: 20px;
-        }
-        
-        .estadisticas {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-            display: flex;
-            justify-content: space-around;
-            flex-wrap: wrap;
-            gap: 20px;
-        }
-        
-        .stat-card {
-            text-align: center;
-        }
-        
-        .stat-numero {
-            font-size: 32px;
-            font-weight: bold;
-            color: #667eea;
-        }
-        
-        .stat-label {
-            color: #666;
-            font-size: 14px;
-            margin-top: 5px;
-        }
-    </style>
-    <script>
-        function confirmarEliminacion(nombre, grupos) {
-            if (grupos > 0) {
-                alert('No se puede eliminar la carrera "' + nombre + '" porque tiene ' + grupos + ' grupo(s) asociado(s).');
-                return false;
-            }
-            return confirm('¿Está seguro de que desea eliminar la carrera "' + nombre + '"?');
-        }
-        
-        function confirmarCambioEstado(nombre, activa) {
-            const accion = activa ? 'desactivar' : 'activar';
-            return confirm('¿Está seguro de que desea ' + accion + ' la carrera "' + nombre + '"?');
-        }
-    </script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Configurar Catálogos</title>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+
+body{
+    font-family:'Inter',sans-serif;
+    background:#0f0f1e;
+    min-height:100vh;
+    padding:25px;
+    position:relative;
+}
+body::before{
+    content:'';
+    position:fixed;inset:0;
+    background:
+        radial-gradient(circle at 20% 50%, rgba(120,119,198,.30), transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(99,102,241,.20), transparent 50%),
+        radial-gradient(circle at 40% 20%, rgba(168,85,247,.15), transparent 50%);
+    z-index:0;
+}
+
+.wrap{max-width:1200px;margin:auto;position:relative;z-index:1}
+
+.header{
+    display:flex;justify-content:space-between;align-items:center;
+    flex-wrap:wrap;gap:14px;margin-bottom:18px;
+}
+.header h1{
+    color:#fff;font-size:22px;font-weight:800;
+    letter-spacing:-.4px;
+}
+
+.btn{
+    padding:12px 18px;border-radius:12px;
+    text-decoration:none;font-weight:800;
+    color:#fff;
+    background:linear-gradient(135deg,#6366f1,#8b5cf6);
+    transition:.25s;
+    display:inline-flex;align-items:center;gap:8px;
+}
+.btn:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(99,102,241,.35)}
+
+.card{
+    background:rgba(15,15,30,.55);
+    backdrop-filter:blur(20px);
+    border:1px solid rgba(255,255,255,.10);
+    border-radius:18px;
+    padding:25px;
+    box-shadow:0 20px 60px rgba(0,0,0,.35);
+    animation:fadeInUp .45s ease both;
+}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+
+.mensaje{
+    padding:12px 14px;border-radius:12px;
+    margin-bottom:16px;font-weight:800;font-size:13px;
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.06);
+}
+.exito{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.12);color:#bbf7d0}
+.error{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.12);color:#fecaca}
+
+.tabs{
+    display:flex;gap:10px;flex-wrap:wrap;
+    margin:14px 0 18px;
+}
+.tab{
+    padding:10px 16px;border-radius:12px;
+    text-decoration:none;font-weight:900;font-size:13px;
+    color:rgba(255,255,255,.75);
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.06);
+    transition:.2s;
+}
+.tab:hover{transform:translateY(-2px);border-color:rgba(99,102,241,.45)}
+.tab.active{
+    color:#fff;
+    border-color:rgba(99,102,241,.55);
+    background:linear-gradient(135deg, rgba(99,102,241,.30), rgba(139,92,246,.22));
+}
+
+form{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    gap:14px;
+    padding:16px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.05);
+    margin-bottom:18px;
+}
+label{color:#c7d2fe;font-size:13px;font-weight:900;margin-bottom:6px;display:block}
+input{
+    width:100%;
+    padding:12px;border-radius:12px;
+    border:1px solid rgba(255,255,255,.15);
+    background:rgba(255,255,255,.06);
+    color:#fff;
+    outline:none;
+}
+input::placeholder{color:rgba(255,255,255,.35)}
+input:focus{
+    border-color:rgba(99,102,241,.55);
+    box-shadow:0 0 0 4px rgba(99,102,241,.18);
+}
+.submit{
+    grid-column:1/-1;
+    padding:14px;border:none;border-radius:14px;
+    font-weight:900;font-size:14px;
+    cursor:pointer;color:#fff;
+    background:linear-gradient(135deg,#6366f1,#8b5cf6);
+    transition:.25s;
+}
+.submit:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(99,102,241,.35)}
+
+table{width:100%;border-collapse:collapse;margin-top:12px}
+th,td{padding:12px;border-bottom:1px solid rgba(255,255,255,.10);text-align:left}
+th{color:#fff;font-size:13px}
+td{color:#c7d2fe;font-size:13px}
+
+.badge{
+    display:inline-block;padding:6px 12px;border-radius:999px;
+    background:rgba(99,102,241,.2);
+    border:1px solid rgba(99,102,241,.35);
+    color:#e0e7ff;font-weight:900;font-size:12px;
+}
+.action{
+    padding:8px 12px;border-radius:12px;
+    text-decoration:none;font-weight:900;font-size:12px;
+    display:inline-block;
+    border:1px solid rgba(255,255,255,.12);
+    transition:.2s;
+}
+.red{background:rgba(239,68,68,.14);color:#fecaca;border-color:rgba(239,68,68,.35)}
+.green{background:rgba(34,197,94,.14);color:#bbf7d0;border-color:rgba(34,197,94,.35)}
+.action:hover{transform:translateY(-2px)}
+.muted{color:rgba(255,255,255,.45);font-size:12px;margin-top:8px}
+</style>
 </head>
+
 <body>
-    <div class="container">
-        <h1>⚙️ Configurar Catálogos - Carreras</h1>
-        
-        <div class="navegacion">
-            <a href="configurar_catalogos.php" class="nav-link active">Catálogo Carreras</a>
-            <a href="registrar_grupo.php" class="nav-link">Registrar Grupo</a>
-            <a href="registrar_alumno.php" class="nav-link">Registrar Alumno</a>
-            <a href="alumnos_registrados.php" class="nav-link">Ver Alumnos</a>
-        </div>
-        
-        <?php if ($mensaje): ?>
-            <div class="mensaje <?php echo $tipo_mensaje; ?>">
-                <?php echo $mensaje; ?>
-            </div>
-        <?php endif; ?>
-        
-        <div class="header-actions">
-            <h2 style="color: #333; font-size: 20px;">Lista de Carreras</h2>
-            <a href="registrar_carrera.php" class="btn-registrar">
-                ➕ Registrar Carrera
-            </a>
-        </div>
-        
-        <?php if ($carreras->num_rows > 0): ?>
-            <?php
-            // Calcular estadísticas
-            $total_carreras = $carreras->num_rows;
-            $carreras_activas = 0;
-            $carreras_inactivas = 0;
-            
-            // Contar carreras activas e inactivas
-            $carreras->data_seek(0);
-            while($c = $carreras->fetch_assoc()) {
-                if ($c['activa']) {
-                    $carreras_activas++;
-                } else {
-                    $carreras_inactivas++;
-                }
-            }
-            ?>
-            
-            <div class="estadisticas">
-                <div class="stat-card">
-                    <div class="stat-numero"><?php echo $total_carreras; ?></div>
-                    <div class="stat-label">Total Carreras</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-numero" style="color: #28a745;"><?php echo $carreras_activas; ?></div>
-                    <div class="stat-label">Activas</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-numero" style="color: #dc3545;"><?php echo $carreras_inactivas; ?></div>
-                    <div class="stat-label">Inactivas</div>
-                </div>
-            </div>
-            
-            <div class="tabla-contenedor">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Carrera</th>
-                            <th>Estado</th>
-                            <th>Grupos Asociados</th>
-                            <th>Fecha Registro</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php 
-                        $carreras->data_seek(0);
-                        while($carrera = $carreras->fetch_assoc()): 
-                        ?>
-                            <tr>
-                                <td><strong><?php echo htmlspecialchars($carrera['nombre']); ?></strong></td>
-                                <td>
-                                    <?php if ($carrera['activa']): ?>
-                                        <span class="badge badge-activa">✓ Activa</span>
-                                    <?php else: ?>
-                                        <span class="badge badge-inactiva">✗ Inactiva</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <span class="badge badge-grupos">
-                                        <?php echo $carrera['total_grupos']; ?> grupo(s)
-                                    </span>
-                                </td>
-                                <td><?php echo date('d/m/Y', strtotime($carrera['fecha_registro'])); ?></td>
-                                <td>
-                                    <div class="acciones">
-                                        <?php if ($carrera['activa']): ?>
-                                            <a href="?toggle=<?php echo $carrera['id']; ?>" 
-                                               class="btn-accion btn-desactivar"
-                                               onclick="return confirmarCambioEstado('<?php echo htmlspecialchars($carrera['nombre']); ?>', true)">
-                                                🔒 Desactivar
-                                            </a>
-                                        <?php else: ?>
-                                            <a href="?toggle=<?php echo $carrera['id']; ?>" 
-                                               class="btn-accion btn-activar"
-                                               onclick="return confirmarCambioEstado('<?php echo htmlspecialchars($carrera['nombre']); ?>', false)">
-                                                ✓ Activar
-                                            </a>
-                                        <?php endif; ?>
-                                        
-                                        <a href="?eliminar=<?php echo $carrera['id']; ?>" 
-                                           class="btn-accion btn-eliminar"
-                                           onclick="return confirmarEliminacion('<?php echo htmlspecialchars($carrera['nombre']); ?>', <?php echo $carrera['total_grupos']; ?>)">
-                                            🗑️ Eliminar
-                                        </a>
-                                    </div>
-                                </td>
-                            </tr>
-                        <?php endwhile; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php else: ?>
-            <div class="empty-state">
-                <div class="empty-state-icon">📚</div>
-                <h2>No hay carreras registradas</h2>
-                <p>Comienza agregando tu primera carrera al catálogo</p>
-                <a href="registrar_carrera.php" class="btn-registrar">➕ Registrar Carrera</a>
-            </div>
-        <?php endif; ?>
+<div class="wrap">
+
+    <div class="header">
+        <h1>⚙️ Configuración de Catálogos</h1>
+        <a href="index.php" class="btn">🏠 Volver al Inicio</a>
     </div>
+
+    <div class="card">
+
+        <div class="tabs">
+            <a class="tab <?php echo $tab==='carrera'?'active':''; ?>" href="?tab=carrera">Carreras</a>
+            <a class="tab <?php echo $tab==='turno'?'active':''; ?>" href="?tab=turno">Turnos</a>
+            <a class="tab <?php echo $tab==='grado'?'active':''; ?>" href="?tab=grado">Grados</a>
+        </div>
+
+        <?php if ($mensaje): ?>
+            <div class="mensaje <?php echo $tipo_mensaje; ?>"><?php echo htmlspecialchars($mensaje); ?></div>
+        <?php endif; ?>
+
+        <?php if ($tab === 'carrera'): ?>
+            <form method="POST">
+                <div>
+                    <label>Nombre</label>
+                    <input name="nombre" placeholder="Ej: Sistemas" required>
+                </div>
+                <div>
+                    <label>Código</label>
+                    <input name="codigo" placeholder="Ej: ISC" required>
+                </div>
+                <button class="submit" type="submit">Guardar Carrera</button>
+                <div class="muted">Solo carreras activas aparecen al registrar grupos.</div>
+            </form>
+
+            <table>
+                <thead><tr><th>Nombre</th><th>Código</th><th>Grupos</th><th>Estado</th><th>Acción</th></tr></thead>
+                <tbody>
+                <?php while($c = $carreras->fetch_assoc()): ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($c['nombre']); ?></td>
+                        <td><span class="badge"><?php echo htmlspecialchars($c['codigo']); ?></span></td>
+                        <td><?php echo (int)$c['total_grupos']; ?></td>
+                        <td><?php echo $c['activo'] ? 'Activa' : 'Inactiva'; ?></td>
+                        <td>
+                            <?php if ($c['activo']): ?>
+                                <a class="action red" href="?tab=carrera&accion=desactivar&id=<?php echo $c['id_carrera']; ?>">Desactivar</a>
+                            <?php else: ?>
+                                <a class="action green" href="?tab=carrera&accion=activar&id=<?php echo $c['id_carrera']; ?>">Activar</a>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endwhile; ?>
+                </tbody>
+            </table>
+
+        <?php elseif ($tab === 'turno'): ?>
+            <form method="POST">
+                <div>
+                    <label>Nombre</label>
+                    <input name="nombre" placeholder="Ej: Vespertino" required>
+                </div>
+                <div>
+                    <label>Sigla</label>
+                    <input name="sigla" placeholder="Ej: V" required>
+                </div>
+                <button class="submit" type="submit">Guardar Turno</button>
+            </form>
+
+            <table>
+                <thead><tr><th>Nombre</th><th>Sigla</th><th>Grupos</th><th>Estado</th><th>Acción</th></tr></thead>
+                <tbody>
+                <?php while($t = $turnos->fetch_assoc()): ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($t['nombre']); ?></td>
+                        <td><span class="badge"><?php echo htmlspecialchars($t['sigla']); ?></span></td>
+                        <td><?php echo (int)$t['total_grupos']; ?></td>
+                        <td><?php echo $t['activo'] ? 'Activo' : 'Inactivo'; ?></td>
+                        <td>
+                            <?php if ($t['activo']): ?>
+                                <a class="action red" href="?tab=turno&accion=desactivar&id=<?php echo $t['id_turno']; ?>">Desactivar</a>
+                            <?php else: ?>
+                                <a class="action green" href="?tab=turno&accion=activar&id=<?php echo $t['id_turno']; ?>">Activar</a>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endwhile; ?>
+                </tbody>
+            </table>
+
+        <?php else: ?>
+            <form method="POST">
+                <div>
+                    <label>Número</label>
+                    <input name="numero" type="number" min="1" max="20" placeholder="Ej: 8" required>
+                </div>
+                <button class="submit" type="submit">Guardar Grado</button>
+            </form>
+
+            <table>
+                <thead><tr><th>Grado</th><th>Grupos</th><th>Estado</th><th>Acción</th></tr></thead>
+                <tbody>
+                <?php while($gr = $grados->fetch_assoc()): ?>
+                    <tr>
+                        <td><span class="badge"><?php echo htmlspecialchars($gr['numero']); ?></span></td>
+                        <td><?php echo (int)$gr['total_grupos']; ?></td>
+                        <td><?php echo $gr['activo'] ? 'Activo' : 'Inactivo'; ?></td>
+                        <td>
+                            <?php if ($gr['activo']): ?>
+                                <a class="action red" href="?tab=grado&accion=desactivar&id=<?php echo $gr['id_grado']; ?>">Desactivar</a>
+                            <?php else: ?>
+                                <a class="action green" href="?tab=grado&accion=activar&id=<?php echo $gr['id_grado']; ?>">Activar</a>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endwhile; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+
+    </div>
+</div>
 </body>
 </html>
